@@ -157,29 +157,74 @@
 
   .mode-row .pill { flex: 1; min-width: 120px; }
 
-  .checkbox-row {
+  .switch-row {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 9px;
-    background: var(--panel-raised);
-    border-radius: 9px;
-    padding: 10px 12px;
+    gap: 10px;
     font-size: 0.85rem;
     color: var(--text);
     cursor: pointer;
   }
 
-  .checkbox-row input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
-    accent-color: var(--rule);
+  .switch-row.panel {
+    justify-content: space-between;
+    background: var(--panel-raised);
+    border-radius: 9px;
+    padding: 10px 14px;
+  }
+
+  .switch-row:has(input:disabled) {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .switch {
+    position: relative;
+    display: inline-block;
+    width: 38px;
+    height: 22px;
+    flex-shrink: 0;
+  }
+
+  .switch input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
     cursor: pointer;
   }
 
-  .checkbox-row:has(input:disabled) {
-    opacity: 0.5;
-    cursor: not-allowed;
+  .switch-track {
+    position: absolute;
+    inset: 0;
+    background: rgba(201, 138, 63, 0.25);
+    border-radius: 999px;
+    transition: background-color 0.18s ease;
+  }
+
+  .switch-thumb {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--muted);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    transition: transform 0.18s ease, background-color 0.18s ease;
+  }
+
+  .switch input:checked ~ .switch-track { background: var(--rule); }
+  .switch input:checked ~ .switch-track .switch-thumb {
+    transform: translateX(16px);
+    background: #241c16;
+  }
+  .switch input:focus-visible ~ .switch-track {
+    outline: 2px solid var(--text);
+    outline-offset: 2px;
   }
 
   .divider {
@@ -389,8 +434,14 @@
     text-align: center;
   }
 
+  .tuner-switch-row {
+    flex-direction: column;
+    gap: 7px;
+    margin: 0 0 12px;
+  }
+
   .tuner-eyebrow {
-    margin: 0 0 10px;
+    margin: 0;
     font-size: 0.62rem;
     font-weight: 600;
     letter-spacing: 0.14em;
@@ -507,6 +558,7 @@
       padding: 12px 18px;
     }
     .tuner-eyebrow { display: none; }
+    .tuner-switch-row { margin: 0; order: -1; }
     .tuner-note { font-size: 1.9rem; }
     .tuner-freq { margin: 2px 0 0; }
     .tuner-meter { flex: 1; min-width: 0; }
@@ -525,7 +577,13 @@
   <div class="app">
     <div class="tuner">
       <div class="tuner-inner">
-        <p class="tuner-eyebrow">Accordeur</p>
+        <label class="switch-row tuner-switch-row" for="tunerToggle">
+          <span class="tuner-eyebrow">Accordeur</span>
+          <span class="switch">
+            <input type="checkbox" id="tunerToggle">
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+          </span>
+        </label>
         <div class="tuner-note" id="tunerNote">–</div>
         <div class="tuner-freq" id="tunerFreq">&nbsp;</div>
         <div class="tuner-meter">
@@ -572,9 +630,12 @@
 
         <fieldset id="directionGroup">
           <legend>Direction</legend>
-          <label class="checkbox-row" for="roundTripCheck">
-            <input type="checkbox" id="roundTripCheck">
+          <label class="switch-row panel" for="roundTripCheck">
             <span>Aller-retour (monter, puis redescendre)</span>
+            <span class="switch">
+              <input type="checkbox" id="roundTripCheck">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+            </span>
           </label>
         </fieldset>
 
@@ -738,6 +799,7 @@
   const tunerPeg = document.getElementById('tunerPeg');
   const tunerCents = document.getElementById('tunerCents');
   const tunerPegTags = document.querySelectorAll('.tuner-peg-tag');
+  const tunerToggle = document.getElementById('tunerToggle');
 
   const violinStrings = {
     'G3': midiToFreq(55),
@@ -814,7 +876,9 @@
   let entries = [];
 
   let audioCtx, analyser, mediaStream, source, rafId;
-  let active = false; // one shared mic session drives both the tuner and the practice
+  let micOn = false;      // the shared mic session (AudioContext + analyser) is running
+  let practiceOn = false; // a scale-practice run is in progress
+  let tunerOn = false;    // the tuner dial wants to be live, independent of practice
   const buf = new Float32Array(4096);
 
   function renderDots() {
@@ -847,7 +911,7 @@
 
   programRow.addEventListener('click', (e) => {
     const btn = e.target.closest('.pill');
-    if (!btn || active) return;
+    if (!btn || practiceOn) return;
     sharps = Number(btn.dataset.sharps);
     [...programRow.children].forEach(b => b.classList.toggle('active', b === btn));
     resetRun();
@@ -855,7 +919,7 @@
 
   modeRow.addEventListener('click', (e) => {
     const btn = e.target.closest('.pill');
-    if (!btn || active) return;
+    if (!btn || practiceOn) return;
     mode = btn.dataset.mode;
     [...modeRow.children].forEach(b => b.classList.toggle('active', b === btn));
     resetRun();
@@ -863,13 +927,19 @@
   modeRow.children[0].classList.add('active');
 
   roundTripCheck.addEventListener('change', () => {
-    if (active) { roundTripCheck.checked = roundTrip; return; }
+    if (practiceOn) { roundTripCheck.checked = roundTrip; return; }
     roundTrip = roundTripCheck.checked;
     resetRun();
   });
 
+  tunerToggle.addEventListener('change', () => {
+    tunerOn = tunerToggle.checked;
+    if (!tunerOn) renderTuner(-1);
+    syncMic();
+  });
+
   toggleBtn.addEventListener('click', () => {
-    if (!active) startSession(); else stopSession(true);
+    if (!practiceOn) startPractice(); else stopPractice(true);
   });
 
   captureBtn.addEventListener('click', beginCapture);
@@ -879,23 +949,50 @@
     statusEl.textContent = "Prêt à recommencer.";
   });
 
-  async function startSession() {
+  // ---- Shared mic session: opened whenever the tuner or the practice run
+  // wants it, closed only once neither does. ----
+  async function openMic() {
     try {
       mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
       });
     } catch (err) {
       statusEl.textContent = "Impossible d'accéder au micro : " + err.message;
-      return;
+      return false;
     }
-
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     source = audioCtx.createMediaStreamSource(mediaStream);
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 4096;
     source.connect(analyser);
+    micOn = true;
+    rafId = requestAnimationFrame(tick);
+    return true;
+  }
 
-    active = true;
+  function closeMic() {
+    micOn = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
+    if (audioCtx) audioCtx.close();
+    renderTuner(-1);
+  }
+
+  async function syncMic() {
+    const shouldRun = tunerOn || practiceOn;
+    if (shouldRun && !micOn) {
+      const ok = await openMic();
+      if (!ok && tunerOn && !practiceOn) { tunerOn = false; tunerToggle.checked = false; }
+    } else if (!shouldRun && micOn) {
+      closeMic();
+    }
+  }
+
+  async function startPractice() {
+    practiceOn = true;
+    await syncMic();
+    if (!micOn) { practiceOn = false; return; } // mic permission failed
+
     resetRun();
     renderTarget();
 
@@ -914,42 +1011,39 @@
       statusEl.textContent = "Écoute en cours… jouez la gamme note par note, à votre rythme.";
       contState = { window: [], cooling: false, lastFreq: null };
     }
-
-    rafId = requestAnimationFrame(tick);
   }
 
-  function stopSession(userInitiated) {
-    active = false;
+  function stopPractice(userInitiated) {
+    practiceOn = false;
     captureState = null;
-    if (rafId) cancelAnimationFrame(rafId);
-    if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
-    if (audioCtx) audioCtx.close();
     toggleBtn.textContent = "Démarrer";
     toggleBtn.classList.remove('stop');
     captureBtn.hidden = true;
     programRow.querySelectorAll('.pill').forEach(b => b.disabled = false);
     modeRow.querySelectorAll('.pill').forEach(b => b.disabled = false);
     roundTripCheck.disabled = false;
-    renderTuner(-1);
     if (userInitiated) statusEl.textContent = "Arrêté.";
+    syncMic(); // drops the mic only if the tuner isn't holding it open
   }
 
-  // ---- Single shared frame loop: feeds the tuner every frame, plus
-  // whichever scale-practice mode is active. ----
+  // ---- Single shared frame loop: feeds the tuner every frame the mic is
+  // open, plus whichever scale-practice mode is running. ----
   function tick(now) {
-    if (!active) return;
+    if (!micOn) return;
     analyser.getFloatTimeDomainData(buf);
     const freq = autoCorrelate(buf, audioCtx.sampleRate);
 
-    renderTuner(freq);
+    if (tunerOn) renderTuner(freq);
 
-    if (mode === 'continuous') {
-      continuousStep(freq);
-    } else {
-      stepTick(freq, now);
+    if (practiceOn) {
+      if (mode === 'continuous') {
+        continuousStep(freq);
+      } else {
+        stepTick(freq, now);
+      }
     }
 
-    if (!active) return; // the run may have just finished mid-frame
+    if (!micOn) return; // the run may have just finished mid-frame, dropping the mic
     rafId = requestAnimationFrame(tick);
   }
 
@@ -986,7 +1080,7 @@
   }
 
   function finalizeRun() {
-    stopSession(false);
+    stopPractice(false);
     const total = entries.length;
     const passCount = entries.filter(e => e.pass).length;
     const pct = Math.round((passCount / total) * 100);
@@ -1013,7 +1107,7 @@
   let captureState = null;
 
   function beginCapture() {
-    if (!active || idx >= scale.midi.length) return;
+    if (!practiceOn || idx >= scale.midi.length) return;
     captureBtn.disabled = true;
     statusEl.textContent = "Écoute…";
     captureState = { readings: [], startTime: performance.now(), ignore: 200, duration: 1100 };
@@ -1039,7 +1133,7 @@
     readings.sort((a, b) => a - b);
     const median = readings[Math.floor(readings.length / 2)];
     recordEntry(median);
-    if (active) {
+    if (practiceOn) {
       statusEl.textContent = "Jouez la note affichée, puis cliquez sur « Capturer la note ».";
       captureBtn.disabled = false;
     }
