@@ -239,7 +239,14 @@
   }
 
   .live-readout .cents.good { color: var(--good); }
+  .live-readout .cents.near { color: var(--rule); }
   .live-readout .cents.bad { color: var(--bad); }
+
+  .cents-help {
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin: 0 0 10px;
+  }
 
   .controls {
     margin-top: 18px;
@@ -414,6 +421,7 @@
       <div class="target-caption" id="targetCaption">&nbsp;</div>
       <div class="note-display" id="noteDisplay">–</div>
       <div class="live-readout" id="liveReadout">&nbsp;</div>
+      <p class="cents-help">¢ = cent, centième de demi-ton (100¢ = un demi-ton). Vert = juste, orange = bonne note mais pas encore accordée, rouge = mauvaise note.</p>
 
       <div class="controls">
         <div class="button-row">
@@ -447,6 +455,7 @@
   const NOTE_NAMES = ["Do", "Do#", "Ré", "Ré#", "Mi", "Fa", "Fa#", "Sol", "Sol#", "La", "La#", "Si"];
   const A4 = 440;
   const PASS_CENTS = 12;
+  const ADVANCE_CENTS = 45; // "close enough to be recognized as the target note", well under a half-step (100¢)
 
   const PROGRAMS = [
     { sharps: 0, n: "0 ♯", d: "naturelles" },
@@ -688,7 +697,8 @@
   function liveFeedback(freq, targetFreq) {
     if (freq === -1 || freq == null) { liveReadout.innerHTML = '&nbsp;'; return; }
     const cents = centsFromTarget(freq, targetFreq);
-    const cls = Math.abs(cents) <= PASS_CENTS ? 'good' : 'bad';
+    const abs = Math.abs(cents);
+    const cls = abs <= PASS_CENTS ? 'good' : (abs <= ADVANCE_CENTS ? 'near' : 'bad');
     liveReadout.innerHTML =
       `${freq.toFixed(1)} Hz &nbsp;·&nbsp; <span class="cents ${cls}">${cents > 0 ? '+' : ''}${cents.toFixed(0)}¢</span>`;
   }
@@ -797,8 +807,10 @@
     liveFeedback(freq, targetFreq);
 
     if (freq === -1) {
+      // Silence (e.g. bow lift between notes) must NOT clear the cooldown:
+      // otherwise the tail of the previous note gets re-captured the instant
+      // the next target appears, before the player has had a chance to play it.
       contState.window = [];
-      contState.cooling = false;
     } else if (contState.cooling) {
       const escaped = contState.lastFreq == null ||
         Math.abs(1200 * Math.log2(freq / contState.lastFreq)) > CONT_ESCAPE_CENTS;
@@ -811,11 +823,17 @@
         const spread = 1200 * Math.log2(maxF / minF);
         if (spread <= CONT_STABLE_CENTS) {
           const mean = contState.window.reduce((a, b) => a + b, 0) / contState.window.length;
-          contState.lastFreq = mean;
-          contState.cooling = true;
-          contState.window = [];
-          recordEntry(mean);
-          if (!runActive) return; // finished
+          // Only advance once the held pitch actually matches the CURRENT
+          // target note (within a half-step tolerance). A stable-but-wrong
+          // note just keeps the window sliding instead of being recorded.
+          const cents = centsFromTarget(mean, targetFreq);
+          if (Math.abs(cents) <= ADVANCE_CENTS) {
+            contState.lastFreq = mean;
+            contState.cooling = true;
+            contState.window = [];
+            recordEntry(mean);
+            if (!runActive) return; // finished
+          }
         }
       }
     }
