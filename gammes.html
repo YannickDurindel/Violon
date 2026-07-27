@@ -176,6 +176,31 @@
 
   .mode-row .pill { flex: 1; min-width: 120px; }
 
+  .checkbox-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    background: var(--panel-raised);
+    border-radius: 9px;
+    padding: 10px 12px;
+    font-size: 0.85rem;
+    color: var(--text);
+    cursor: pointer;
+  }
+
+  .checkbox-row input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--rule);
+    cursor: pointer;
+  }
+
+  .checkbox-row:has(input:disabled) {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
   .divider {
     border-top: 1px solid var(--rule-dim);
     margin: 20px 0;
@@ -393,7 +418,7 @@
   <div class="card">
     <div class="card-inner">
       <p class="eyebrow">Gammes</p>
-      <p class="subtitle">4 cordes, 4 notes chacune (à vide + 3 doigts) — un dièse de plus à chaque niveau</p>
+      <p class="subtitle">4 cordes, à vide + 3 doigts (4 doigts sur le Mi, jusqu'au Si) — un dièse de plus à chaque niveau</p>
 
       <fieldset id="programGroup">
         <legend>Programme</legend>
@@ -412,6 +437,14 @@
             <span class="d">détection automatique</span>
           </button>
         </div>
+      </fieldset>
+
+      <fieldset id="directionGroup">
+        <legend>Direction</legend>
+        <label class="checkbox-row" for="roundTripCheck">
+          <input type="checkbox" id="roundTripCheck">
+          <span>Aller-retour (monter, puis redescendre)</span>
+        </label>
       </fieldset>
 
       <div class="divider"></div>
@@ -465,10 +498,11 @@
     { sharps: 4, n: "4 ♯", d: "+ Ré♯" }
   ];
 
-  // 4 strings (Sol/Ré/La/Mi), 4 notes each: open string + 1st + 2nd + 3rd finger.
-  const BASE_MIDI    = [55,57,59,60, 62,64,65,67, 69,71,72,74, 76,77,79,81];
-  const BASE_STRING  = ["Sol","Sol","Sol","Sol", "Ré","Ré","Ré","Ré", "La","La","La","La", "Mi","Mi","Mi","Mi"];
-  const BASE_FINGER  = [0,1,2,3, 0,1,2,3, 0,1,2,3, 0,1,2,3];
+  // 4 strings (Sol/Ré/La/Mi), open string + 1st + 2nd + 3rd finger, plus a
+  // 4th finger on the Mi string (Si) to close out the scale.
+  const BASE_MIDI    = [55,57,59,60, 62,64,65,67, 69,71,72,74, 76,77,79,81,83];
+  const BASE_STRING  = ["Sol","Sol","Sol","Sol", "Ré","Ré","Ré","Ré", "La","La","La","La", "Mi","Mi","Mi","Mi","Mi"];
+  const BASE_FINGER  = [0,1,2,3, 0,1,2,3, 0,1,2,3, 0,1,2,3,4];
 
   function buildScale(sharps) {
     const raise = new Set();
@@ -483,6 +517,18 @@
       midi: ascMidi,
       string: BASE_STRING,
       finger: BASE_FINGER
+    };
+  }
+
+  // Appends the descent back down to the tonic (excluding the top note,
+  // which is only played once at the turnaround).
+  function withRoundTrip(scale) {
+    if (!roundTrip) return scale;
+    const n = scale.midi.length;
+    return {
+      midi: scale.midi.concat(scale.midi.slice(0, n - 1).reverse()),
+      string: scale.string.concat(scale.string.slice(0, n - 1).reverse()),
+      finger: scale.finger.concat(scale.finger.slice(0, n - 1).reverse())
     };
   }
 
@@ -569,6 +615,7 @@
   const scoreSub = document.getElementById('scoreSub');
   const resultsBody = document.getElementById('resultsBody');
   const restartBtn = document.getElementById('restartBtn');
+  const roundTripCheck = document.getElementById('roundTripCheck');
 
   programRow.innerHTML = PROGRAMS.map((p, i) =>
     `<button type="button" class="pill${i === 0 ? ' active' : ''}" data-sharps="${p.sharps}">` +
@@ -577,7 +624,8 @@
 
   let sharps = 0;
   let mode = 'step';
-  let scale = buildScale(sharps);
+  let roundTrip = false;
+  let scale = withRoundTrip(buildScale(sharps));
   let idx = 0;
   let entries = [];
 
@@ -604,7 +652,7 @@
   }
 
   function resetRun() {
-    scale = buildScale(sharps);
+    scale = withRoundTrip(buildScale(sharps));
     idx = 0;
     entries = [];
     noteDisplay.textContent = '–';
@@ -630,6 +678,12 @@
     resetRun();
   });
   modeRow.children[0].classList.add('active');
+
+  roundTripCheck.addEventListener('change', () => {
+    if (micActive) { roundTripCheck.checked = roundTrip; return; }
+    roundTrip = roundTripCheck.checked;
+    resetRun();
+  });
 
   toggleBtn.addEventListener('click', () => {
     if (!micActive) startMic(); else stopMic(true);
@@ -667,6 +721,7 @@
     toggleBtn.classList.add('stop');
     programRow.querySelectorAll('.pill').forEach(b => b.disabled = true);
     modeRow.querySelectorAll('.pill').forEach(b => b.disabled = true);
+    roundTripCheck.disabled = true;
 
     if (mode === 'step') {
       captureBtn.hidden = false;
@@ -691,6 +746,7 @@
     captureBtn.hidden = true;
     programRow.querySelectorAll('.pill').forEach(b => b.disabled = false);
     modeRow.querySelectorAll('.pill').forEach(b => b.disabled = false);
+    roundTripCheck.disabled = false;
     if (userInitiated) statusEl.textContent = "Arrêté.";
   }
 
