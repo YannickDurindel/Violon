@@ -639,6 +639,17 @@
           </label>
         </fieldset>
 
+        <fieldset id="loopGroup">
+          <legend>Répétition</legend>
+          <label class="switch-row panel" for="loopCheck">
+            <span>Boucle infinie (jusqu'à l'arrêt)</span>
+            <span class="switch">
+              <input type="checkbox" id="loopCheck">
+              <span class="switch-track"><span class="switch-thumb"></span></span>
+            </span>
+          </label>
+        </fieldset>
+
         <div class="divider"></div>
 
         <div class="dot-strip" id="dotStrip"></div>
@@ -862,6 +873,7 @@
   const resultsBody = document.getElementById('resultsBody');
   const restartBtn = document.getElementById('restartBtn');
   const roundTripCheck = document.getElementById('roundTripCheck');
+  const loopCheck = document.getElementById('loopCheck');
 
   programRow.innerHTML = PROGRAMS.map((p, i) =>
     `<button type="button" class="pill${i === 0 ? ' active' : ''}" data-sharps="${p.sharps}">` +
@@ -871,9 +883,12 @@
   let sharps = 0;
   let mode = 'step';
   let roundTrip = false;
+  let loopMode = false;
   let scale = withRoundTrip(buildScale(sharps));
   let idx = 0;
   let entries = [];
+  let allEntries = []; // completed laps' entries, accumulated while looping
+  let lapCount = 0;
 
   let audioCtx, analyser, mediaStream, source, rafId;
   let micOn = false;      // the shared mic session (AudioContext + analyser) is running
@@ -902,6 +917,8 @@
     scale = withRoundTrip(buildScale(sharps));
     idx = 0;
     entries = [];
+    allEntries = [];
+    lapCount = 0;
     noteDisplay.textContent = '–';
     liveReadout.innerHTML = '&nbsp;';
     results.hidden = true;
@@ -932,6 +949,12 @@
     resetRun();
   });
 
+  loopCheck.addEventListener('change', () => {
+    if (practiceOn) { loopCheck.checked = loopMode; return; }
+    loopMode = loopCheck.checked;
+    resetRun();
+  });
+
   tunerToggle.addEventListener('change', () => {
     tunerOn = tunerToggle.checked;
     if (!tunerOn) renderTuner(-1);
@@ -939,7 +962,9 @@
   });
 
   toggleBtn.addEventListener('click', () => {
-    if (!practiceOn) startPractice(); else stopPractice(true);
+    if (!practiceOn) startPractice();
+    else if (loopMode) finalizeLoopRun();
+    else stopPractice(true);
   });
 
   captureBtn.addEventListener('click', beginCapture);
@@ -1001,6 +1026,7 @@
     programRow.querySelectorAll('.pill').forEach(b => b.disabled = true);
     modeRow.querySelectorAll('.pill').forEach(b => b.disabled = true);
     roundTripCheck.disabled = true;
+    loopCheck.disabled = true;
 
     if (mode === 'step') {
       captureBtn.hidden = false;
@@ -1022,6 +1048,7 @@
     programRow.querySelectorAll('.pill').forEach(b => b.disabled = false);
     modeRow.querySelectorAll('.pill').forEach(b => b.disabled = false);
     roundTripCheck.disabled = false;
+    loopCheck.disabled = false;
     if (userInitiated) statusEl.textContent = "Arrêté.";
     syncMic(); // drops the mic only if the tuner isn't holding it open
   }
@@ -1073,22 +1100,34 @@
     idx++;
     renderDots();
     if (idx >= scale.midi.length) {
-      finalizeRun();
+      if (loopMode) {
+        lapCount++;
+        allEntries = allEntries.concat(entries);
+        entries = [];
+        idx = 0;
+        renderDots();
+        renderTarget();
+        statusEl.textContent = `Gamme n°${lapCount} terminée — ça continue, cliquez sur « Arrêter » quand vous voulez.`;
+      } else {
+        finalizeRun();
+      }
     } else {
       renderTarget();
     }
   }
 
-  function finalizeRun() {
-    stopPractice(false);
-    const total = entries.length;
-    const passCount = entries.filter(e => e.pass).length;
-    const pct = Math.round((passCount / total) * 100);
-    scoreLine.textContent = `${passCount} / ${total} notes justes`;
-    scoreSub.textContent = `${pct}% de précision · seuil : ±${PASS_CENTS}¢`;
-    resultsBody.innerHTML = entries.map(e => `
+  function computeStats(list) {
+    const total = list.length;
+    const passCount = list.filter(e => e.pass).length;
+    const pct = total ? Math.round((passCount / total) * 100) : 0;
+    const avgAbsCents = total ? list.reduce((s, e) => s + Math.abs(e.cents), 0) / total : 0;
+    return { total, passCount, pct, avgAbsCents };
+  }
+
+  function renderResultsTable(list) {
+    resultsBody.innerHTML = list.map((e, i) => `
       <tr class="${e.pass ? '' : 'fail'}">
-        <td>${e.index + 1}</td>
+        <td>${i + 1}</td>
         <td>${e.string}</td>
         <td>${e.targetName}</td>
         <td>${e.playedName}</td>
@@ -1096,8 +1135,38 @@
         <td><span class="chip ${e.pass ? 'pass' : 'fail'}">${e.pass ? 'juste' : 'faux'}</span></td>
       </tr>
     `).join('');
+  }
+
+  function finalizeRun() {
+    stopPractice(false);
+    const stats = computeStats(entries);
+    scoreLine.textContent = `${stats.passCount} / ${stats.total} notes justes`;
+    scoreSub.textContent = `${stats.pct}% de précision · seuil : ±${PASS_CENTS}¢`;
+    renderResultsTable(entries);
     results.hidden = false;
     statusEl.textContent = "Gamme terminée.";
+    targetCaption.innerHTML = '&nbsp;';
+    noteDisplay.textContent = '–';
+    liveReadout.innerHTML = '&nbsp;';
+  }
+
+  // Manual stop while looping: aggregate every completed lap plus whatever
+  // was captured in the lap in progress, then report basic stats.
+  function finalizeLoopRun() {
+    const combined = allEntries.concat(entries);
+    stopPractice(false);
+    const stats = computeStats(combined);
+    if (stats.total === 0) {
+      scoreLine.textContent = "Aucune note jouée.";
+      scoreSub.textContent = "";
+    } else {
+      scoreLine.textContent = `${stats.passCount} / ${stats.total} notes justes`;
+      scoreSub.textContent =
+        `${stats.pct}% de précision · seuil : ±${PASS_CENTS}¢ · ${lapCount} gamme(s) complète(s) · écart moyen ${stats.avgAbsCents.toFixed(0)}¢`;
+    }
+    renderResultsTable(combined);
+    results.hidden = false;
+    statusEl.textContent = "Boucle arrêtée.";
     targetCaption.innerHTML = '&nbsp;';
     noteDisplay.textContent = '–';
     liveReadout.innerHTML = '&nbsp;';
