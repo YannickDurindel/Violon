@@ -293,6 +293,10 @@
   .live-readout .cents.near { color: var(--rule); }
   .live-readout .cents.bad { color: var(--bad); }
 
+  .pitch-meter {
+    margin: 4px 6px 14px;
+  }
+
   .cents-help {
     font-size: 0.72rem;
     color: var(--muted);
@@ -466,6 +470,7 @@
   }
 
   .tuner-note.in-tune { color: var(--good); }
+  .tuner-note.near-tune { color: var(--rule); }
 
   .tuner-freq {
     font-size: 0.7rem;
@@ -508,6 +513,7 @@
     transition: left 0.08s linear, background-color 0.15s ease;
   }
   .tuner-peg-bead.good { background: var(--good); }
+  .tuner-peg-bead.near { background: var(--rule); }
   .tuner-peg-bead.bad { background: var(--bad); }
 
   .tuner-cents {
@@ -569,6 +575,49 @@
   @media (max-width: 380px) {
     .note-display { font-size: 3.8rem; }
     .card-inner { padding: 24px 16px 20px; }
+  }
+
+  .exercise-card { margin-top: 20px; }
+
+  .fingerboard-grid { margin-bottom: 22px; }
+
+  table.fingerboard {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+  }
+
+  table.fingerboard th, table.fingerboard td {
+    padding: 7px 4px;
+    text-align: center;
+    border: 1px solid var(--rule-dim);
+    font-variant-numeric: tabular-nums;
+  }
+
+  table.fingerboard thead th {
+    color: var(--muted);
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: var(--panel-raised);
+  }
+
+  table.fingerboard tbody th {
+    color: var(--muted);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    background: var(--panel-raised);
+  }
+
+  table.fingerboard td.na {
+    color: var(--muted);
+    opacity: 0.3;
+  }
+
+  table.fingerboard td.target {
+    background: var(--rule);
+    color: #241c16;
+    font-weight: 700;
   }
 </style>
 </head>
@@ -657,6 +706,14 @@
         <div class="target-caption" id="targetCaption">&nbsp;</div>
         <div class="note-display" id="noteDisplay">–</div>
         <div class="live-readout" id="liveReadout">&nbsp;</div>
+        <div class="pitch-meter">
+          <div class="tuner-line">
+            <span class="tick lo"></span>
+            <span class="tick mid"></span>
+            <span class="tick hi"></span>
+            <span class="tuner-peg-bead" id="liveMeterBead"></span>
+          </div>
+        </div>
         <p class="cents-help">¢ = cent, centième de demi-ton (100¢ = un demi-ton). Vert = juste, orange = bonne note mais pas encore accordée, rouge = mauvaise note.</p>
 
         <div class="controls">
@@ -681,6 +738,72 @@
           <div class="restart-row">
             <button id="restartBtn" type="button" class="secondary">Recommencer</button>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card exercise-card">
+    <div class="card-inner">
+      <p class="eyebrow">Exercices</p>
+      <p class="subtitle">Notes dans un ordre aléatoire, sans indication d'octave — la grille indique la corde et le doigt</p>
+
+      <fieldset id="exProgramGroup">
+        <legend>Programme</legend>
+        <div class="pill-row" id="exProgramRow"></div>
+      </fieldset>
+
+      <fieldset id="exModeGroup">
+        <legend>Mode d'écoute</legend>
+        <div class="pill-row mode-row" id="exModeRow">
+          <button type="button" class="pill" data-mode="step">
+            <span class="n">Note par note</span>
+            <span class="d">vous capturez chaque note</span>
+          </button>
+          <button type="button" class="pill" data-mode="continuous">
+            <span class="n">Écoute continue</span>
+            <span class="d">détection automatique</span>
+          </button>
+        </div>
+      </fieldset>
+
+      <div class="divider"></div>
+
+      <div class="fingerboard-grid" id="exGrid"></div>
+
+      <div class="target-caption" id="exCounter">&nbsp;</div>
+      <div class="note-display" id="exNoteDisplay">–</div>
+      <div class="live-readout" id="exLiveReadout">&nbsp;</div>
+      <div class="pitch-meter">
+        <div class="tuner-line">
+          <span class="tick lo"></span>
+          <span class="tick mid"></span>
+          <span class="tick hi"></span>
+          <span class="tuner-peg-bead" id="exMeterBead"></span>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="button-row">
+          <button id="exToggleBtn" type="button">Démarrer</button>
+          <button id="exCaptureBtn" type="button" class="secondary" hidden>Capturer la note</button>
+        </div>
+        <div class="status" id="exStatus">Choisissez un programme et un mode, puis démarrez.</div>
+      </div>
+
+      <div class="results" id="exResults" hidden>
+        <div class="score-line" id="exScoreLine"></div>
+        <div class="score-sub" id="exScoreSub"></div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>#</th><th>Corde</th><th>Cible</th><th>Joué</th><th>Écart</th><th>Résultat</th></tr>
+            </thead>
+            <tbody id="exResultsBody"></tbody>
+          </table>
+        </div>
+        <div class="restart-row">
+          <button id="exRestartBtn" type="button" class="secondary">Recommencer</button>
         </div>
       </div>
     </div>
@@ -826,7 +949,7 @@
       tunerFreq.innerHTML = '&nbsp;';
       tunerCents.innerHTML = '&nbsp;';
       tunerPeg.style.left = '50%';
-      tunerPeg.classList.remove('good', 'bad');
+      tunerPeg.classList.remove('good', 'near', 'bad');
       tunerPegTags.forEach(t => t.classList.remove('active'));
       return;
     }
@@ -842,10 +965,13 @@
     const clamped = Math.max(-50, Math.min(50, cents));
     tunerPeg.style.left = (50 + clamped) + "%";
 
-    const inTune = Math.abs(cents) <= 5;
-    tunerNote.classList.toggle('in-tune', inTune);
-    tunerPeg.classList.toggle('good', inTune);
-    tunerPeg.classList.toggle('bad', !inTune);
+    const absCents = Math.abs(cents);
+    const state = absCents <= PASS_CENTS ? 'good' : (absCents <= ADVANCE_CENTS ? 'near' : 'bad');
+    tunerNote.classList.toggle('in-tune', state === 'good');
+    tunerNote.classList.toggle('near-tune', state === 'near');
+    tunerPeg.classList.toggle('good', state === 'good');
+    tunerPeg.classList.toggle('near', state === 'near');
+    tunerPeg.classList.toggle('bad', state === 'bad');
 
     let closestKey = null, closestDiff = Infinity;
     for (const key in violinStrings) {
@@ -864,6 +990,7 @@
   const targetCaption = document.getElementById('targetCaption');
   const noteDisplay = document.getElementById('noteDisplay');
   const liveReadout = document.getElementById('liveReadout');
+  const liveMeterBead = document.getElementById('liveMeterBead');
   const toggleBtn = document.getElementById('toggleBtn');
   const captureBtn = document.getElementById('captureBtn');
   const statusEl = document.getElementById('status');
@@ -896,6 +1023,35 @@
   let tunerOn = false;    // the tuner dial wants to be live, independent of practice
   const buf = new Float32Array(4096);
 
+  // ---- DOM (random-note exercises) ----
+  const exProgramRow = document.getElementById('exProgramRow');
+  const exModeRow = document.getElementById('exModeRow');
+  const exGrid = document.getElementById('exGrid');
+  const exCounter = document.getElementById('exCounter');
+  const exNoteDisplay = document.getElementById('exNoteDisplay');
+  const exLiveReadout = document.getElementById('exLiveReadout');
+  const exMeterBead = document.getElementById('exMeterBead');
+  const exToggleBtn = document.getElementById('exToggleBtn');
+  const exCaptureBtn = document.getElementById('exCaptureBtn');
+  const exStatus = document.getElementById('exStatus');
+  const exResults = document.getElementById('exResults');
+  const exScoreLine = document.getElementById('exScoreLine');
+  const exScoreSub = document.getElementById('exScoreSub');
+  const exResultsBody = document.getElementById('exResultsBody');
+  const exRestartBtn = document.getElementById('exRestartBtn');
+
+  exProgramRow.innerHTML = PROGRAMS.map((p, i) =>
+    `<button type="button" class="pill${i === 0 ? ' active' : ''}" data-sharps="${p.sharps}">` +
+    `<span class="n">${p.n}</span><span class="d">${p.d}</span></button>`
+  ).join('');
+
+  let exSharps = 0;
+  let exMode = 'step';
+  let exScale = buildScale(exSharps);
+  let exIdx = null;
+  let exEntries = [];
+  let exOn = false; // a random-note exercise run is in progress
+
   function renderDots() {
     dotStrip.innerHTML = scale.midi.map((_, i) => {
       let cls = 'dot';
@@ -921,6 +1077,7 @@
     lapCount = 0;
     noteDisplay.textContent = '–';
     liveReadout.innerHTML = '&nbsp;';
+    renderCentsMeter(liveMeterBead, null);
     results.hidden = true;
     renderDots();
     targetCaption.innerHTML = '&nbsp;';
@@ -974,6 +1131,234 @@
     statusEl.textContent = "Prêt à recommencer.";
   });
 
+  // ---- Random-note exercises: same fingerboard positions as the scale
+  // programs, drawn in random order. The grid shows string + finger for the
+  // current target; the big display shows only the note name (no octave).
+  const EX_STRING_ROWS = ["Sol", "Ré", "La", "Mi"];
+  const EX_FINGER_COLS = [0, 1, 2, 3, 4];
+
+  function renderExGrid() {
+    if (exIdx == null) { exGrid.innerHTML = ''; return; }
+    const targetString = exScale.string[exIdx];
+    const targetFinger = exScale.finger[exIdx];
+    const positions = {};
+    exScale.string.forEach((s, i) => { positions[s + '|' + exScale.finger[i]] = exScale.midi[i]; });
+
+    const headerCells = EX_FINGER_COLS.map(f => `<th>${f}</th>`).join('');
+    const rows = EX_STRING_ROWS.map(str => {
+      const cells = EX_FINGER_COLS.map(f => {
+        const midi = positions[str + '|' + f];
+        if (midi == null) return '<td class="na">–</td>';
+        const isTarget = str === targetString && f === targetFinger;
+        const { name } = midiToName(midi);
+        return `<td class="${isTarget ? 'target' : ''}">${name.replace('#', '♯')}</td>`;
+      }).join('');
+      return `<tr><th>${str}</th>${cells}</tr>`;
+    }).join('');
+
+    exGrid.innerHTML =
+      `<table class="fingerboard"><thead><tr><th></th>${headerCells}</tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
+  function renderExTarget() {
+    const { name } = midiToName(exScale.midi[exIdx]);
+    exNoteDisplay.textContent = name.replace('#', '♯');
+    exCounter.textContent =
+      `Note n°${exEntries.length + 1} · corde de ${exScale.string[exIdx]} · ${fingerLabel(exScale.finger[exIdx])}`;
+  }
+
+  function pickNextExNote() {
+    const n = exScale.midi.length;
+    let next = Math.floor(Math.random() * n);
+    if (n > 1) { while (next === exIdx) next = Math.floor(Math.random() * n); }
+    exIdx = next;
+    renderExTarget();
+    renderExGrid();
+  }
+
+  function resetExView() {
+    exIdx = null;
+    exEntries = [];
+    exNoteDisplay.textContent = '–';
+    exCounter.innerHTML = '&nbsp;';
+    exLiveReadout.innerHTML = '&nbsp;';
+    renderCentsMeter(exMeterBead, null);
+    exResults.hidden = true;
+    exGrid.innerHTML = '';
+  }
+
+  exProgramRow.addEventListener('click', (e) => {
+    const btn = e.target.closest('.pill');
+    if (!btn || exOn) return;
+    exSharps = Number(btn.dataset.sharps);
+    [...exProgramRow.children].forEach(b => b.classList.toggle('active', b === btn));
+    exScale = buildScale(exSharps);
+    resetExView();
+  });
+
+  exModeRow.addEventListener('click', (e) => {
+    const btn = e.target.closest('.pill');
+    if (!btn || exOn) return;
+    exMode = btn.dataset.mode;
+    [...exModeRow.children].forEach(b => b.classList.toggle('active', b === btn));
+    resetExView();
+  });
+  exModeRow.children[0].classList.add('active');
+
+  exToggleBtn.addEventListener('click', () => {
+    if (!exOn) startExercise(); else stopExercise();
+  });
+
+  exCaptureBtn.addEventListener('click', exBeginCapture);
+  exRestartBtn.addEventListener('click', () => {
+    resetExView();
+    exStatus.textContent = "Prêt à recommencer.";
+  });
+
+  async function startExercise() {
+    exOn = true;
+    await syncMic();
+    if (!micOn) { exOn = false; exStatus.textContent = statusEl.textContent; return; } // mic permission failed
+
+    resetExView();
+    pickNextExNote();
+
+    exToggleBtn.textContent = "Arrêter";
+    exToggleBtn.classList.add('stop');
+    exProgramRow.querySelectorAll('.pill').forEach(b => b.disabled = true);
+    exModeRow.querySelectorAll('.pill').forEach(b => b.disabled = true);
+    toggleBtn.disabled = true;
+
+    if (exMode === 'step') {
+      exCaptureBtn.hidden = false;
+      exCaptureBtn.disabled = false;
+      exStatus.textContent = "Jouez la note affichée, puis cliquez sur « Capturer la note ».";
+    } else {
+      exCaptureBtn.hidden = true;
+      exStatus.textContent = "Écoute en cours… jouez la note affichée, à votre rythme.";
+      exContState = { window: [], cooling: false, lastFreq: null };
+    }
+  }
+
+  function stopExercise() {
+    exOn = false;
+    exCaptureState = null;
+    exToggleBtn.textContent = "Démarrer";
+    exToggleBtn.classList.remove('stop');
+    exCaptureBtn.hidden = true;
+    exProgramRow.querySelectorAll('.pill').forEach(b => b.disabled = false);
+    exModeRow.querySelectorAll('.pill').forEach(b => b.disabled = false);
+    toggleBtn.disabled = false;
+    syncMic(); // drops the mic only if nothing else is holding it open
+
+    const stats = computeStats(exEntries);
+    if (stats.total === 0) {
+      exScoreLine.textContent = "Aucune note jouée.";
+      exScoreSub.textContent = "";
+    } else {
+      exScoreLine.textContent = `${stats.passCount} / ${stats.total} notes justes`;
+      exScoreSub.textContent =
+        `${stats.pct}% de précision · seuil : ±${PASS_CENTS}¢ · écart moyen ${stats.avgAbsCents.toFixed(0)}¢`;
+    }
+    renderResultsTable(exResultsBody, exEntries);
+    exResults.hidden = false;
+    exStatus.textContent = "Exercice arrêté.";
+    exCounter.innerHTML = '&nbsp;';
+    exNoteDisplay.textContent = '–';
+    exLiveReadout.innerHTML = '&nbsp;';
+    renderCentsMeter(exMeterBead, null);
+    exGrid.innerHTML = '';
+  }
+
+  function exRecordEntry(freq) {
+    const targetMidi = exScale.midi[exIdx];
+    const targetFreq = midiToFreq(targetMidi);
+    const cents = centsFromTarget(freq, targetFreq);
+    const pass = Math.abs(cents) <= PASS_CENTS;
+    exEntries.push({
+      string: exScale.string[exIdx],
+      finger: exScale.finger[exIdx],
+      targetName: midiToName(targetMidi).display,
+      playedName: freqToNearestName(freq),
+      cents,
+      pass
+    });
+    pickNextExNote();
+    if (exMode === 'step') {
+      exStatus.textContent = "Jouez la note affichée, puis cliquez sur « Capturer la note ».";
+    }
+  }
+
+  // ---- Step mode: capture a short window on demand ----
+  let exCaptureState = null;
+
+  function exBeginCapture() {
+    if (!exOn || exIdx == null) return;
+    exCaptureBtn.disabled = true;
+    exStatus.textContent = "Écoute…";
+    exCaptureState = { readings: [], startTime: performance.now(), ignore: 200, duration: 1100 };
+  }
+
+  function exStepTick(freq, now) {
+    if (exIdx != null) liveFeedback(exLiveReadout, freq, midiToFreq(exScale.midi[exIdx]), exMeterBead);
+    if (!exCaptureState) return;
+    const elapsed = now - exCaptureState.startTime;
+    if (freq !== -1 && elapsed >= exCaptureState.ignore) exCaptureState.readings.push(freq);
+    if (elapsed >= exCaptureState.duration) exFinishCapture();
+  }
+
+  function exFinishCapture() {
+    const readings = exCaptureState.readings;
+    exCaptureState = null;
+    if (readings.length < 6) {
+      exStatus.textContent = "Aucun son net détecté, réessayez.";
+      exLiveReadout.innerHTML = '&nbsp;';
+      renderCentsMeter(exMeterBead, null);
+      exCaptureBtn.disabled = false;
+      return;
+    }
+    readings.sort((a, b) => a - b);
+    const median = readings[Math.floor(readings.length / 2)];
+    exRecordEntry(median);
+    if (exOn) {
+      exStatus.textContent = "Jouez la note affichée, puis cliquez sur « Capturer la note ».";
+      exCaptureBtn.disabled = false;
+    }
+  }
+
+  // ---- Continuous mode: auto-detect stable pitches while playing freely ----
+  let exContState = null;
+
+  function exContinuousStep(freq) {
+    const targetFreq = midiToFreq(exScale.midi[exIdx]);
+    liveFeedback(exLiveReadout, freq, targetFreq, exMeterBead);
+
+    if (freq === -1) {
+      exContState.window = [];
+    } else if (exContState.cooling) {
+      const escaped = exContState.lastFreq == null ||
+        Math.abs(1200 * Math.log2(freq / exContState.lastFreq)) > CONT_ESCAPE_CENTS;
+      if (escaped) { exContState.cooling = false; exContState.window = []; }
+    } else {
+      exContState.window.push(freq);
+      if (exContState.window.length > CONT_WINDOW) exContState.window.shift();
+      if (exContState.window.length === CONT_WINDOW) {
+        const minF = Math.min(...exContState.window), maxF = Math.max(...exContState.window);
+        const spread = 1200 * Math.log2(maxF / minF);
+        if (spread <= CONT_STABLE_CENTS) {
+          const mean = exContState.window.reduce((a, b) => a + b, 0) / exContState.window.length;
+          const cents = centsFromTarget(mean, targetFreq);
+          if (Math.abs(cents) <= ADVANCE_CENTS) {
+            exContState.lastFreq = mean;
+            exContState.cooling = true;
+            exContState.window = [];
+            exRecordEntry(mean);
+          }
+        }
+      }
+    }
+  }
+
   // ---- Shared mic session: opened whenever the tuner or the practice run
   // wants it, closed only once neither does. ----
   async function openMic() {
@@ -1004,10 +1389,10 @@
   }
 
   async function syncMic() {
-    const shouldRun = tunerOn || practiceOn;
+    const shouldRun = tunerOn || practiceOn || exOn;
     if (shouldRun && !micOn) {
       const ok = await openMic();
-      if (!ok && tunerOn && !practiceOn) { tunerOn = false; tunerToggle.checked = false; }
+      if (!ok && tunerOn && !practiceOn && !exOn) { tunerOn = false; tunerToggle.checked = false; }
     } else if (!shouldRun && micOn) {
       closeMic();
     }
@@ -1027,6 +1412,7 @@
     modeRow.querySelectorAll('.pill').forEach(b => b.disabled = true);
     roundTripCheck.disabled = true;
     loopCheck.disabled = true;
+    exToggleBtn.disabled = true;
 
     if (mode === 'step') {
       captureBtn.hidden = false;
@@ -1049,6 +1435,7 @@
     modeRow.querySelectorAll('.pill').forEach(b => b.disabled = false);
     roundTripCheck.disabled = false;
     loopCheck.disabled = false;
+    exToggleBtn.disabled = false;
     if (userInitiated) statusEl.textContent = "Arrêté.";
     syncMic(); // drops the mic only if the tuner isn't holding it open
   }
@@ -1070,17 +1457,49 @@
       }
     }
 
+    if (exOn) {
+      if (exMode === 'continuous') {
+        exContinuousStep(freq);
+      } else {
+        exStepTick(freq, now);
+      }
+    }
+
     if (!micOn) return; // the run may have just finished mid-frame, dropping the mic
     rafId = requestAnimationFrame(tick);
   }
 
-  function liveFeedback(freq, targetFreq) {
-    if (freq === -1 || freq == null) { liveReadout.innerHTML = '&nbsp;'; return; }
+  // Visual gauge (shared markup/CSS with the tuner dial): moves a bead along
+  // a ±50¢ line and colors it by proximity, so pitch error is seen at a
+  // glance instead of only read as a number.
+  function renderCentsMeter(beadEl, cents) {
+    if (!beadEl) return;
+    if (cents == null) {
+      beadEl.style.left = '50%';
+      beadEl.classList.remove('good', 'near', 'bad');
+      return;
+    }
+    const clamped = Math.max(-50, Math.min(50, cents));
+    beadEl.style.left = (50 + clamped) + '%';
+    const abs = Math.abs(cents);
+    const state = abs <= PASS_CENTS ? 'good' : (abs <= ADVANCE_CENTS ? 'near' : 'bad');
+    beadEl.classList.toggle('good', state === 'good');
+    beadEl.classList.toggle('near', state === 'near');
+    beadEl.classList.toggle('bad', state === 'bad');
+  }
+
+  function liveFeedback(el, freq, targetFreq, beadEl) {
+    if (freq === -1 || freq == null) {
+      el.innerHTML = '&nbsp;';
+      renderCentsMeter(beadEl, null);
+      return;
+    }
     const cents = centsFromTarget(freq, targetFreq);
     const abs = Math.abs(cents);
     const cls = abs <= PASS_CENTS ? 'good' : (abs <= ADVANCE_CENTS ? 'near' : 'bad');
-    liveReadout.innerHTML =
+    el.innerHTML =
       `${freq.toFixed(1)} Hz &nbsp;·&nbsp; <span class="cents ${cls}">${cents > 0 ? '+' : ''}${cents.toFixed(0)}¢</span>`;
+    renderCentsMeter(beadEl, cents);
   }
 
   function recordEntry(freq) {
@@ -1124,8 +1543,8 @@
     return { total, passCount, pct, avgAbsCents };
   }
 
-  function renderResultsTable(list) {
-    resultsBody.innerHTML = list.map((e, i) => `
+  function renderResultsTable(tbodyEl, list) {
+    tbodyEl.innerHTML = list.map((e, i) => `
       <tr class="${e.pass ? '' : 'fail'}">
         <td>${i + 1}</td>
         <td>${e.string}</td>
@@ -1142,12 +1561,13 @@
     const stats = computeStats(entries);
     scoreLine.textContent = `${stats.passCount} / ${stats.total} notes justes`;
     scoreSub.textContent = `${stats.pct}% de précision · seuil : ±${PASS_CENTS}¢`;
-    renderResultsTable(entries);
+    renderResultsTable(resultsBody, entries);
     results.hidden = false;
     statusEl.textContent = "Gamme terminée.";
     targetCaption.innerHTML = '&nbsp;';
     noteDisplay.textContent = '–';
     liveReadout.innerHTML = '&nbsp;';
+    renderCentsMeter(liveMeterBead, null);
   }
 
   // Manual stop while looping: aggregate every completed lap plus whatever
@@ -1164,12 +1584,13 @@
       scoreSub.textContent =
         `${stats.pct}% de précision · seuil : ±${PASS_CENTS}¢ · ${lapCount} gamme(s) complète(s) · écart moyen ${stats.avgAbsCents.toFixed(0)}¢`;
     }
-    renderResultsTable(combined);
+    renderResultsTable(resultsBody, combined);
     results.hidden = false;
     statusEl.textContent = "Boucle arrêtée.";
     targetCaption.innerHTML = '&nbsp;';
     noteDisplay.textContent = '–';
     liveReadout.innerHTML = '&nbsp;';
+    renderCentsMeter(liveMeterBead, null);
   }
 
   // ---- Step mode: capture a short window on demand ----
@@ -1183,7 +1604,7 @@
   }
 
   function stepTick(freq, now) {
-    if (idx < scale.midi.length) liveFeedback(freq, midiToFreq(scale.midi[idx]));
+    if (idx < scale.midi.length) liveFeedback(liveReadout, freq, midiToFreq(scale.midi[idx]), liveMeterBead);
     if (!captureState) return;
     const elapsed = now - captureState.startTime;
     if (freq !== -1 && elapsed >= captureState.ignore) captureState.readings.push(freq);
@@ -1196,6 +1617,7 @@
     if (readings.length < 6) {
       statusEl.textContent = "Aucun son net détecté, réessayez.";
       liveReadout.innerHTML = '&nbsp;';
+      renderCentsMeter(liveMeterBead, null);
       captureBtn.disabled = false;
       return;
     }
@@ -1216,7 +1638,7 @@
 
   function continuousStep(freq) {
     const targetFreq = midiToFreq(scale.midi[idx]);
-    liveFeedback(freq, targetFreq);
+    liveFeedback(liveReadout, freq, targetFreq, liveMeterBead);
 
     if (freq === -1) {
       // Silence (e.g. bow lift between notes) must NOT clear the cooldown:
